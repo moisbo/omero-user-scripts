@@ -1,19 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Mon Feb  5 10:09:13 2018
 
-@author: evenhuis
+@author: evenhuis, moisbo
 """
 # from Parse_OMERO_Properties import datasetId, imageId, plateId
 
 import sys
 import argparse
 import os
+import omero
+from omero.gateway import BlitzGateway
+from Parse_OMERO_Properties import USERNAME, PASSWORD, HOST, PORT
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-def download_dataset(conn, Id, path, orig=False, tif=False):
+def download_dataset(Id, path, orig=False, tif=False):
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     """
     download a dataset from OMERO
@@ -28,7 +31,6 @@ def download_dataset(conn, Id, path, orig=False, tif=False):
     if (dataset == None):
         print("Dataset ID {} not found in group".format(Id))
         sys.exit(1)
-    print("here")
 
     # get the images
     imgs = list(dataset.listChildren())
@@ -64,72 +66,74 @@ def download_dataset(conn, Id, path, orig=False, tif=False):
     return
 
 
-"""
-start-code
-"""
+def main():
 
-parser = argparse.ArgumentParser(description='Download datasets and projects from OMERO')
-parser.add_argument('-p', '--project', nargs="+", default=[], help="IDs of projects to download")
-parser.add_argument('-d', '--dataset', nargs="+", default=[], help="IDs of datasets to download")
-parser.add_argument('-g', '--group', nargs="?", help="name of group")
-parser.add_argument('-o', '--orig', action="store_true", default=False, help="download originals")
-parser.add_argument('-t', '--tif', action="store_true", default=False, help="download OME-TIFs")
+    try:
+        conn.connect()
 
-args = parser.parse_args()
+        user = conn.getUser()
+        print "Current user:"
+        print "   ID:", user.getId()
+        print "   Username:", user.getName()
+        print "   Full Name:", user.getFullName()
 
-# Create a connection
-# ===================
+        if args.group is not None:
+            print("change group")
+            new_group = args.group
+            groups = [g.getName() for g in conn.listGroups()]
+            print(groups)
+            if new_group not in groups:
+                print("{} not found in groups:".format(new_group))
+                for gn in groups:
+                    print("    {}".format(gn))
+                conn.close()
+                sys.exit(1)
+            else:
+                conn.setGroupNameForSession(new_group)
+
+        print(args.dataset)
+        for d_id in args.dataset:
+            download_dataset(d_id, path, orig=args.orig, tif=args.tif)
+
+        print(args.project)
+        for p_id in args.project:
+            project = conn.getObject('Project', p_id)
+            path_p = os.path.join(path, project.getName())
+            if project is None:
+                print("project ID {} not found in group {}".format(p_id, orig=args.orig, tif=args.tif))
+                conn.close()
+                sys.exit(1)
+
+            for ds in list(project.listChildren()):
+                download_dataset(ds.getId(), path_p, orig=args.orig, tif=args.tif)
+
+        conn.close()
+
+    except Exception as e:
+        print "cannot connect: ", e
+        sys.exit(1)
 
 
-from omero.gateway import BlitzGateway
-from Parse_OMERO_Properties import USERNAME, PASSWORD, HOST, PORT
+if __name__ == "__main__":
 
-print(HOST)
+    parser = argparse.ArgumentParser(description='Download datasets and projects from OMERO')
+    parser.add_argument('-p', '--project', nargs="+", default=[], help="IDs of projects to download")
+    parser.add_argument('-d', '--dataset', nargs="+", default=[], help="IDs of datasets to download")
+    parser.add_argument('-g', '--group', nargs="?", help="name of group")
+    parser.add_argument('-o', '--orig', action="store_true", default=False, help="download originals")
+    parser.add_argument('-t', '--tif', action="store_true", default=False, help="download OME-TIFs")
+    parser.add_argument('-f', '--files', default="/tmp/downloads", help="location of the downloads folder")
+    args = parser.parse_args()
 
-conn = BlitzGateway(USERNAME, PASSWORD, host=HOST, port=PORT)
+    download_path = args.files
+    if os.path.isdir(download_path) and os.path.exists(download_path):
+        print "writing output to ", download_path
+    else:
+        print "cannot find ", download_path
+        sys.exit(1)
 
-try:
-    conn.connect()
+    conn = BlitzGateway(USERNAME, PASSWORD, host=HOST, port=PORT)
 
-    user = conn.getUser()
-    print "Current user:"
-    print "   ID:", user.getId()
-    print "   Username:", user.getName()
-    print "   Full Name:", user.getFullName()
+    path = download_path
 
-    if args.group is not None:
-        print("change group")
-        new_group = args.group
-        groups = [g.getName() for g in conn.listGroups()]
-        print(groups)
-        if new_group not in groups:
-            print("{} not found in groups:".format(new_group))
-            for gn in groups:
-                print("    {}".format(gn))
-            sys.exit(1)
-        else:
-            conn.setGroupNameForSession(new_group)
-
-    path = os.path.join(os.getcwd(), 'downloads')
-    print(args.dataset)
-    for d_id in args.dataset:
-        download_dataset(conn, d_id, path, orig=args.orig, tif=args.tif)
-
-    print(args.project)
-    for p_id in args.project:
-        project = conn.getObject('Project', p_id)
-        path_p = os.path.join(path, project.getName())
-        if project is None:
-            print("project ID {} not found in group {}".format(p_id, orig=args.orig, tif=args.tif))
-            sys.exit(1)
-
-        for ds in list(project.listChildren()):
-            download_dataset(conn, ds.getId(), path_p, orig=args.orig, tif=args.tif)
-
-except Exception:
-    print "There was a problem trying to connect"
-    sys.exit(1)
-
-finally:
-    # When you are done, close the session to free up server resources.
-    conn.close()
+    main()

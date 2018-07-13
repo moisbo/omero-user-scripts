@@ -1,0 +1,20 @@
+version: '2'
+services:
+   omeropy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: omero-user-scripts:ome5-4-1
+    working_dir: /tmp
+    env_file: .env
+    environment:
+      - OMERO_APP_URL=${OMERO_APP_URL}
+      - OMERO_USERNAME=${OMERO_USERNAME}
+      - OMERO_USER_PASSWORD=${OMERO_USER_PASSWORD}
+    volumes:
+      - ./:/tmp/
+    command: >
+      bash -c "
+        python -m compileall /tmp &&
+        python /tmp/download_files.py -d 2071 -p 759 -o
+      "
